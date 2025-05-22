@@ -1,7 +1,14 @@
 from typing import List, Dict
+import os
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения из .env файла
+load_dotenv()
 
 # Настройки бота
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN не найден в переменных окружения. Создайте файл .env и добавьте BOT_TOKEN=ваш_токен")
 
 # Настройки базы данных
 DATABASE_PATH = "sources.db"
@@ -23,8 +30,8 @@ THEMES: List[str] = [
 
 # Настройки парсеров
 VK_API_VERSION = "5.131"
-TG_API_ID = "YOUR_API_ID"
-TG_API_HASH = "YOUR_API_HASH"
+TG_API_ID = os.getenv("TG_API_ID")
+TG_API_HASH = os.getenv("TG_API_HASH")
 
 # Настройки валидации
 ALLOWED_DOMAINS = ["vk.com", "t.me"]
