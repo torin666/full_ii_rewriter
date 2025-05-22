@@ -1,39 +1,43 @@
 import asyncio
 import logging
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters.command import Command
-from scheduled import Scheduled
-from environs import Env
+from aiogram import Bot, Dispatcher
+from aiogram.fsm.storage.memory import MemoryStorage
+
+from config.settings import BOT_TOKEN
+from bot.handlers.source_handlers import router as source_router
+from bot.handlers.file_handlers import router as file_router
+from database.DatabaseManager import DatabaseManager
 
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('bot.log', encoding='utf-8')
-    ]
+    filename='bot.log'
 )
+
 logger = logging.getLogger(__name__)
 
-# Загрузка переменных окружения
-env = Env()
-env.read_env()
-bot = Bot(token=env('telegram_bot_token'))
-dp = Dispatcher()
+# Инициализация бота и диспетчера
+bot = Bot(token=BOT_TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
 
-# Обработчик команды /start
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    await message.answer("Бот запущен! Парсинг будет выполняться каждые 30 минут.")
+# Регистрация роутеров
+dp.include_router(source_router)
+dp.include_router(file_router)
 
 async def main():
-    # Запуск планировщика
-    scheduler = Scheduled(bot)
-    scheduler.scheduler.start()
+    # Инициализация базы данных
+    db = DatabaseManager()
+    db.init_db()
+    
+    # Создаем временную директорию для файлов
+    import os
+    if not os.path.exists('temp'):
+        os.makedirs('temp')
     
     # Запуск бота
     await dp.start_polling(bot)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     asyncio.run(main())
