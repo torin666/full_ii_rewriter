@@ -1,5 +1,12 @@
 from telethon import TelegramClient
-from config.settings import TG_API_ID, TG_API_HASH
+from dotenv import load_dotenv
+import os
+
+# Загружаем переменные окружения из .env файла
+load_dotenv()
+
+TG_API_ID = os.getenv("TG_API_ID")
+TG_API_HASH = os.getenv("TG_API_HASH")
 
 async def create_session():
     """Создание сессии для Telegram клиента"""

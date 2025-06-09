@@ -1,1 +1,8 @@
-.env
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.session
+vk_redirect.log
+vk_redirect_server.py

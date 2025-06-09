@@ -1,0 +1,2 @@
+Requirement already satisfied: pyngrok in ./venv/lib/python3.12/site-packages (7.2.9)
+Requirement already satisfied: PyYAML>=5.1 in ./venv/lib/python3.12/site-packages (from pyngrok) (6.0.2)

@@ -5,7 +5,7 @@ from aiogram import Bot
 from aiogram.enums import ParseMode
 from parse_all_sources import parse_all_sources
 from database.DatabaseManager import DatabaseManager
-from ai.gpt.rewriter import rewriter
+from ai.gpt.text_rewriter import rewriter
 import aiohttp
 from aiogram.types import FSInputFile
 import tempfile
@@ -30,13 +30,45 @@ class Scheduled:
         self.admin = [5147054199]  # ID админа
         self.db_manager = DatabaseManager()
 
-        # задача запускается каждые 10 минут
-        self.scheduler.add_job(self.run_parser,
-                               CronTrigger.from_crontab('*/10 * * * *', timezone=pytz.timezone('Europe/Moscow')))
-        logger.info("Планировщик настроен на запуск каждые 10 минут")
-        # задача запускается каждые 3 часа в 30 минут
-        # self.scheduler.add_job(self.send_report,
-        #                        CronTrigger.from_crontab('30 */3 * * *', timezone=pytz.timezone('Europe/Moscow')))
+        # Задача парсинга постов каждые 30 минут
+        self.scheduler.add_job(
+            self.parse_sources,
+            CronTrigger.from_crontab('*/1 * * * *', timezone=pytz.timezone('Europe/Moscow'))
+        )
+        logger.info("Планировщик настроен на парсинг каждые 30 минут")
+
+        # Задача обработки постов каждые 10 минут
+        self.scheduler.add_job(
+            self.run_parser,
+            CronTrigger.from_crontab('*/10 * * * *', timezone=pytz.timezone('Europe/Moscow'))
+        )
+        logger.info("Планировщик настроен на обработку постов каждые 10 минут")
+
+    async def parse_sources(self):
+        """Парсинг всех источников"""
+        try:
+            logger.info("Начинаем парсинг источников")
+            # Получаем все источники из links
+            sources = self.db_manager.get_links()
+            if not sources:
+                logger.info("Нет источников для парсинга")
+                return
+
+            # Запускаем парсинг
+            await parse_all_sources()
+            logger.info("Парсинг источников успешно завершен")
+
+        except Exception as e:
+            logger.error(f"Ошибка при парсинге источников: {str(e)}")
+            # Отправляем сообщение об ошибке админу
+            for admin_id in self.admin:
+                try:
+                    await self.bot.send_message(
+                        admin_id,
+                        f"❌ Произошла ошибка при парсинге источников: {str(e)}"
+                    )
+                except Exception as send_error:
+                    logger.error(f"Ошибка при отправке сообщения об ошибке админу {admin_id}: {str(send_error)}")
 
     async def run_parser(self):
         """
@@ -73,8 +105,8 @@ class Scheduled:
                 return
 
             logger.info(f"Начинаем переписывание текста для поста: {post_link}")
-            # Переписываем текст
-            result = await rewriter(post_text, post_link)
+            # Переписываем текст с использованием роли первого админа
+            result = await rewriter(post_text, post_link, self.admin[0])
             if not result or not result.get("text"):
                 logger.error("Не удалось переписать текст")
                 # Отправляем сообщение об ошибке админу
@@ -152,7 +184,7 @@ class Scheduled:
                     # Отправляем анализ
                     await self.bot.send_message(
                         admin_id,
-                        f"📊 ОПЕРАТИВНЫЙ МОНИТОРИНГ | ЧЕБОКСАРЫ\nАнализ ключевых трендов от ИИ-советника для Мэра города Чебоксары\n{datetime.now().date()}| Источники: VK, Telegram\n\n"
+                        f"Источники: VK, Telegram\n\n"
                         f"{last_analysis_result}"
                     )
 

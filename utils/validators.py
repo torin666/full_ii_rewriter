@@ -13,8 +13,12 @@ def validate_url(url: str, allowed_domains: List[str]) -> bool:
         bool: True если URL валиден и принадлежит разрешенным доменам
     """
     try:
+        # Добавляем https:// если его нет
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+            
         parsed = urlparse(url)
-        if not parsed.scheme or not parsed.netloc:
+        if not parsed.netloc:
             return False
         
         # Проверяем, что домен входит в список разрешенных
