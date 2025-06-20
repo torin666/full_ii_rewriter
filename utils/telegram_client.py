@@ -161,15 +161,16 @@ class TelegramClientManager:
         await cls.close_all()
 
     @classmethod
-    async def send_to_group(cls, group_username: str, text: str, photo_url: str = None, is_video: bool = False):
+    async def send_to_group(cls, group_username: str, text: str, photo_url: str = None, is_video: bool = False, is_local: bool = False):
         """
         Отправка поста в группу/канал
         
         Args:
             group_username: username группы/канала (без @)
             text: текст поста
-            photo_url: URL фото/видео (опционально)
+            photo_url: URL фото/видео или путь к локальному файлу (опционально)
             is_video: является ли медиафайл видео
+            is_local: является ли файл локальным (True) или URL (False)
         """
         try:
             client = await cls.get_client()
@@ -183,69 +184,103 @@ class TelegramClientManager:
             
             if photo_url:
                 # Отправляем с медиафайлом
-                if is_video:
-                    # Для видео указываем supports_streaming=True и force_document=False
-                    await client.send_file(
-                        entity,
-                        photo_url,
-                        caption=text,
-                        supports_streaming=True,
-                        force_document=False,
-                        mime_type='video/mp4'
-                    )
-                    logger.info(f"Видео успешно отправлено в {group_username}")
-                else:
-                    # Для фото всегда скачиваем и отправляем как изображение
+                if is_local:
+                    # Локальный файл - отправляем напрямую
                     try:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get(photo_url) as response:
-                                if response.status == 200:
-                                    photo_bytes = await response.read()
-                                    
-                                    # Определяем формат изображения по заголовкам
-                                    content_type = response.headers.get('content-type', '').lower()
-                                    if 'jpeg' in content_type or 'jpg' in content_type:
-                                        filename = "photo.jpg"
-                                    elif 'png' in content_type:
-                                        filename = "photo.png"
-                                    elif 'webp' in content_type:
-                                        filename = "photo.webp"
+                        if is_video:
+                            # Для локального видео
+                            await client.send_file(
+                                entity,
+                                photo_url,
+                                caption=text,
+                                supports_streaming=True,
+                                force_document=False,
+                                parse_mode='markdown'  # Поддержка разметки для жирных заголовков
+                            )
+                            logger.info(f"Локальное видео успешно отправлено в {group_username}")
+                        else:
+                            # Для локального фото
+                            await client.send_file(
+                                entity,
+                                photo_url,
+                                caption=text,
+                                force_document=False,
+                                parse_mode='markdown'  # Поддержка разметки для жирных заголовков
+                            )
+                            logger.info(f"Локальное фото успешно отправлено в {group_username}")
+                    except Exception as local_error:
+                        logger.error(f"Ошибка при отправке локального файла {photo_url}: {local_error}")
+                        # Отправляем только текст
+                        await client.send_message(entity, text, parse_mode='markdown')
+                        logger.info(f"Отправлен только текст в {group_username}")
+                else:
+                    # URL файл - скачиваем и отправляем
+                    if is_video:
+                        # Для видео указываем supports_streaming=True и force_document=False
+                        await client.send_file(
+                            entity,
+                            photo_url,
+                            caption=text,
+                            supports_streaming=True,
+                            force_document=False,
+                            mime_type='video/mp4',
+                            parse_mode='markdown'  # Поддержка разметки для жирных заголовков
+                        )
+                        logger.info(f"Видео успешно отправлено в {group_username}")
+                    else:
+                        # Для фото всегда скачиваем и отправляем как изображение
+                        try:
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(photo_url) as response:
+                                    if response.status == 200:
+                                        photo_bytes = await response.read()
+                                        
+                                        # Определяем формат изображения по заголовкам
+                                        content_type = response.headers.get('content-type', '').lower()
+                                        if 'jpeg' in content_type or 'jpg' in content_type:
+                                            filename = "photo.jpg"
+                                        elif 'png' in content_type:
+                                            filename = "photo.png"
+                                        elif 'webp' in content_type:
+                                            filename = "photo.webp"
+                                        else:
+                                            filename = "photo.jpg"  # По умолчанию
+                                        
+                                        photo_io = io.BytesIO(photo_bytes)
+                                        photo_io.name = filename
+                                        
+                                        # Отправляем как фото, используя специальный метод
+                                        try:
+                                            # Используем send_file с caption для корректной отправки фото с текстом
+                                            await client.send_file(
+                                                entity,
+                                                photo_io,
+                                                caption=text,
+                                                force_document=False,
+                                                attributes=[],
+                                                parse_mode='markdown'  # Поддержка разметки для жирных заголовков
+                                            )
+                                        except:
+                                            # Если не получилось, используем send_file с принудительными параметрами
+                                            await client.send_file(
+                                                entity,
+                                                photo_io,
+                                                caption=text,
+                                                force_document=False,
+                                                attributes=[],
+                                                parse_mode='markdown'  # Поддержка разметки для жирных заголовков
+                                            )
+                                        logger.info(f"Фото успешно отправлено как изображение в {group_username}")
                                     else:
-                                        filename = "photo.jpg"  # По умолчанию
-                                    
-                                    photo_io = io.BytesIO(photo_bytes)
-                                    photo_io.name = filename
-                                    
-                                    # Отправляем как фото, используя специальный метод
-                                    try:
-                                        # Используем send_file с caption для корректной отправки фото с текстом
-                                        await client.send_file(
-                                            entity,
-                                            photo_io,
-                                            caption=text,
-                                            force_document=False,
-                                            attributes=[]
-                                        )
-                                    except:
-                                        # Если не получилось, используем send_file с принудительными параметрами
-                                        await client.send_file(
-                                            entity,
-                                            photo_io,
-                                            caption=text,
-                                            force_document=False,
-                                            attributes=[]
-                                        )
-                                    logger.info(f"Фото успешно отправлено как изображение в {group_username}")
-                                else:
-                                    raise Exception(f"Не удалось скачать изображение: HTTP {response.status}")
-                    except Exception as download_error:
-                        logger.error(f"Ошибка при скачивании и отправке изображения: {download_error}")
-                        # В крайнем случае отправляем только текст
-                        await client.send_message(entity, f"{text}\n\n📷 Изображение: {photo_url}")
-                        logger.info(f"Отправлен только текст с ссылкой на изображение в {group_username}")
+                                        raise Exception(f"Не удалось скачать изображение: HTTP {response.status}")
+                        except Exception as download_error:
+                            logger.error(f"Ошибка при скачивании и отправке изображения: {download_error}")
+                            # В крайнем случае отправляем только текст
+                            await client.send_message(entity, f"{text}\n\n📷 Изображение: {photo_url}", parse_mode='markdown')
+                            logger.info(f"Отправлен только текст с ссылкой на изображение в {group_username}")
             else:
                 # Отправляем только текст
-                await client.send_message(entity, text)
+                await client.send_message(entity, text, parse_mode='markdown')
                 logger.info(f"Текст успешно отправлен в {group_username}")
                 
             return True

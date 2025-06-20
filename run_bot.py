@@ -1,78 +1,82 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import asyncio
 import logging
+import os
 from aiogram import Bot, Dispatcher
-from config.telegram_config import BOT_TOKEN
+from aiogram.fsm.storage.memory import MemoryStorage
+
 from bot.handlers import source_handlers
-from utils.telegram_client import TelegramClientManager
 from autopost_manager import AutopostManager
 from database.DatabaseManager import DatabaseManager
+from utils.telegram_client import TelegramClientManager
+
+# Загружаем переменные окружения
+from dotenv import load_dotenv
+load_dotenv(override=True)
 
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename='bot.log'
+    handlers=[
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler()
+    ]
 )
 
 logger = logging.getLogger(__name__)
 
 async def main():
+    """Основная функция запуска бота"""
+    
+    # Получаем токен бота
+    BOT_TOKEN = os.getenv('BOT_TOKEN')
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN не найден в переменных окружения")
+        return
+    
     # Инициализация бота и диспетчера
     bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher()
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
+    
+    # Инициализация базы данных
+    db = DatabaseManager()
+    try:
+        db.init_db()
+        logger.info("База данных инициализирована")
+    except Exception as e:
+        logger.error(f"Ошибка инициализации БД: {e}")
+        return
+    
+    # Регистрация обработчиков
+    dp.include_router(source_handlers.router)
+    
+    # Инициализация Telegram клиента
+    telegram_manager = TelegramClientManager()
+    
+    # Инициализация и запуск автопостинга
+    autopost_manager = AutopostManager(bot, db, telegram_manager)
+    autopost_task = asyncio.create_task(autopost_manager.start_autopost_loop())
     
     try:
-        # Инициализация базы данных
-        logger.info("Инициализация базы данных")
-        db = DatabaseManager()
-        db.init_db()
-        
-        # Инициализация Telethon клиента для публикации в группы
-        await TelegramClientManager.get_client()
-        
-        # Инициализация автопостинг менеджера
-        logger.info("Инициализация автопостинг менеджера")
-        try:
-            autopost_manager = AutopostManager(bot)
-            logger.info("✅ AutopostManager успешно создан")
-        except Exception as e:
-            logger.error(f"❌ Ошибка создания AutopostManager: {e}")
-            raise
-        
-        # Запуск автопостинг менеджера
-        logger.info("Запуск автопостинг менеджера")
-        try:
-            autopost_task = asyncio.create_task(autopost_manager.start())
-            logger.info("✅ AutopostManager task запущен")
-        except Exception as e:
-            logger.error(f"❌ Ошибка запуска AutopostManager: {e}")
-            raise
-        
-        # Регистрация хендлеров
-        dp.include_router(source_handlers.router)
-        
-        logger.info("Запуск бота")
-        try:
-            await dp.start_polling(bot)
-        finally:
-            # При остановке бота останавливаем автопостинг
-            logger.info("Остановка автопостинг менеджера")
-            await autopost_manager.stop()
-            await autopost_task
-        
-    except Exception as e:
-        logger.error(f"Критическая ошибка: {str(e)}")
-        raise
+        logger.info("🚀 Бот запущен")
+        await dp.start_polling(bot)
+    except KeyboardInterrupt:
+        logger.info("👋 Получен сигнал остановки")
     finally:
-        # Закрываем соединения
-        await TelegramClientManager.close()
+        # Остановка автопостинга
+        await autopost_manager.stop()
+        autopost_task.cancel()
+        
+        # Остановка Telegram клиента
+        await telegram_manager.stop()
+        
+        # Закрытие бота
         await bot.session.close()
-        logger.info("Бот остановлен")
+        logger.info("✅ Бот остановлен")
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Бот остановлен пользователем")
-    except Exception as e:
-        logger.error(f"Критическая ошибка при запуске: {str(e)}") 
+    asyncio.run(main()) 

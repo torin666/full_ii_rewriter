@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 DB_HOST = os.getenv('DB_HOST', '80.74.24.141')
 DB_PORT = int(os.getenv('DB_PORT', 5432))

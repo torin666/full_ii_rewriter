@@ -1,8 +1,30 @@
+# Environments
+.env
+.venv
+env/
 venv/
+ENV/
+
+# Python cache
 __pycache__/
 *.pyc
-*.pyo
+
+# Logs, Sessions, Backups
 *.log
 *.session
-vk_redirect.log
-vk_redirect_server.py
+*.session-journal
+*.backup
+nohup.out
+output.log
+
+# Temp files
+temp/
+
+# Build artifacts
+build/
+dist/
+
+# Ignored Dirs
+pycdc/
+.pytest_cache/
+
